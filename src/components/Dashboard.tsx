@@ -1,19 +1,11 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Sparkles, Sun, Sunrise, Moon } from "lucide-react";
+import { Search, Sparkles, Sun, Sunrise, Moon, Globe } from "lucide-react";
 import MealCard from "@/components/MealCard";
 import BottomNav from "@/components/BottomNav";
 import WeeklyPlanner from "@/components/WeeklyPlanner";
 import RecipeDetail from "@/components/RecipeDetail";
-import meal1 from "@/assets/meal-1.jpg";
-import meal2 from "@/assets/meal-2.jpg";
-import meal3 from "@/assets/meal-3.jpg";
-
-const meals = [
-  { id: 1, image: meal1, title: "Grilled Chicken & Veggies", time: "25 min", calories: "380 kcal", tags: ["High Protein"] },
-  { id: 2, image: meal2, title: "Rainbow Buddha Bowl", time: "15 min", calories: "320 kcal", tags: ["Vegetarian"] },
-  { id: 3, image: meal3, title: "Classic Tomato Pasta", time: "20 min", calories: "450 kcal", tags: ["Quick"] },
-];
+import { allMeals, getCuisines, type Meal } from "@/data/meals";
 
 const moodFilters = [
   { label: "All", icon: Sparkles },
@@ -22,14 +14,22 @@ const moodFilters = [
   { label: "Dinner", icon: Moon },
 ];
 
-const Dashboard = () => {
+const Dashboard = ({ onLogout }: { onLogout?: () => void }) => {
   const [activeTab, setActiveTab] = useState("home");
   const [activeMood, setActiveMood] = useState("All");
-  const [selectedRecipe, setSelectedRecipe] = useState<number | null>(null);
+  const [activeCuisine, setActiveCuisine] = useState("All");
+  const [selectedRecipe, setSelectedRecipe] = useState<Meal | null>(null);
 
-  if (selectedRecipe !== null) {
-    const meal = meals.find((m) => m.id === selectedRecipe)!;
-    return <RecipeDetail meal={meal} onBack={() => setSelectedRecipe(null)} />;
+  const cuisines = getCuisines();
+
+  const filteredMeals = allMeals.filter((m) => {
+    const moodMatch = activeMood === "All" || m.category === activeMood;
+    const cuisineMatch = activeCuisine === "All" || m.cuisine === activeCuisine;
+    return moodMatch && cuisineMatch;
+  });
+
+  if (selectedRecipe) {
+    return <RecipeDetail meal={selectedRecipe} onBack={() => setSelectedRecipe(null)} />;
   }
 
   return (
@@ -51,9 +51,12 @@ const Dashboard = () => {
                   What's cooking today?
                 </h1>
               </div>
-              <div className="w-10 h-10 gradient-warm rounded-full flex items-center justify-center">
+              <button
+                onClick={() => setActiveTab("profile")}
+                className="w-10 h-10 gradient-warm rounded-full flex items-center justify-center"
+              >
                 <span className="text-primary-foreground font-bold text-sm">MJ</span>
-              </div>
+              </button>
             </div>
 
             {/* Search */}
@@ -66,20 +69,26 @@ const Dashboard = () => {
             </div>
 
             {/* Quick suggestion */}
-            <div className="gradient-fresh rounded-2xl p-5 mb-6 flex items-center gap-4">
+            <button
+              onClick={() => {
+                const randomMeal = allMeals[Math.floor(Math.random() * allMeals.length)];
+                setSelectedRecipe(randomMeal);
+              }}
+              className="w-full gradient-fresh rounded-2xl p-5 mb-6 flex items-center gap-4 text-left"
+            >
               <div className="w-12 h-12 bg-primary-foreground/20 rounded-xl flex items-center justify-center">
                 <Sparkles className="w-6 h-6 text-primary-foreground" />
               </div>
               <div className="flex-1">
                 <p className="text-primary-foreground font-bold">Today's pick for you!</p>
                 <p className="text-primary-foreground/80 text-sm">
-                  Based on your mood: Quick & Easy 🚀
+                  Tap to discover a random recipe 🚀
                 </p>
               </div>
-            </div>
+            </button>
 
             {/* Mood filters */}
-            <div className="flex gap-2 mb-6 overflow-x-auto pb-1">
+            <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
               {moodFilters.map((f) => {
                 const Icon = f.icon;
                 return (
@@ -98,18 +107,48 @@ const Dashboard = () => {
               })}
             </div>
 
+            {/* Cuisine filters */}
+            <div className="flex gap-2 mb-6 overflow-x-auto pb-1">
+              <button
+                onClick={() => setActiveCuisine("All")}
+                className={`flex items-center gap-2 px-3 py-2 rounded-full font-semibold text-xs whitespace-nowrap transition-all ${
+                  activeCuisine === "All"
+                    ? "gradient-warm text-accent-foreground shadow-md"
+                    : "bg-muted text-muted-foreground"
+                }`}
+              >
+                <Globe className="w-3.5 h-3.5" /> All Cuisines
+              </button>
+              {cuisines.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => setActiveCuisine(c)}
+                  className={`px-3 py-2 rounded-full font-semibold text-xs whitespace-nowrap transition-all ${
+                    activeCuisine === c
+                      ? "gradient-warm text-accent-foreground shadow-md"
+                      : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+
             {/* Meals */}
             <h2 className="text-xl font-display font-bold text-foreground mb-4">
-              Daily Suggestions
+              Daily Suggestions ({filteredMeals.length})
             </h2>
             <div className="space-y-4">
-              {meals.map((meal) => (
+              {filteredMeals.map((meal) => (
                 <MealCard
                   key={meal.id}
                   {...meal}
-                  onClick={() => setSelectedRecipe(meal.id)}
+                  onClick={() => setSelectedRecipe(meal)}
                 />
               ))}
+              {filteredMeals.length === 0 && (
+                <p className="text-center text-muted-foreground py-8">No recipes found for this filter combo 🤔</p>
+              )}
             </div>
           </motion.div>
         )}
@@ -121,7 +160,7 @@ const Dashboard = () => {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
           >
-            <WeeklyPlanner />
+            <WeeklyPlanner onSelectRecipe={(meal) => setSelectedRecipe(meal)} />
           </motion.div>
         )}
 
@@ -137,11 +176,11 @@ const Dashboard = () => {
               All Recipes 🍳
             </h1>
             <div className="space-y-4">
-              {meals.map((meal) => (
+              {allMeals.map((meal) => (
                 <MealCard
                   key={meal.id}
                   {...meal}
-                  onClick={() => setSelectedRecipe(meal.id)}
+                  onClick={() => setSelectedRecipe(meal)}
                 />
               ))}
             </div>
@@ -157,30 +196,104 @@ const Dashboard = () => {
             className="px-6 pt-8"
           >
             <h1 className="text-2xl font-display font-black text-foreground mb-4">Profile</h1>
-            <div className="bg-card rounded-3xl p-6 border border-border text-center">
-              <div className="w-20 h-20 gradient-warm rounded-full mx-auto mb-4 flex items-center justify-center">
-                <span className="text-primary-foreground text-2xl font-bold">MJ</span>
-              </div>
-              <h2 className="text-xl font-display font-bold text-foreground">MealJoy User</h2>
-              <p className="text-muted-foreground text-sm mt-1">Cooking mood: Quick & Easy 🚀</p>
-              <div className="mt-6 grid grid-cols-3 gap-4">
-                {[
-                  { label: "Recipes", value: "12" },
-                  { label: "Favorites", value: "5" },
-                  { label: "Planned", value: "7" },
-                ].map((stat) => (
-                  <div key={stat.label} className="bg-mint rounded-2xl p-3">
-                    <p className="text-xl font-bold text-primary">{stat.value}</p>
-                    <p className="text-xs text-muted-foreground font-medium">{stat.label}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <ProfileSection onLogout={onLogout} />
           </motion.div>
         )}
       </AnimatePresence>
 
       <BottomNav active={activeTab} onNavigate={setActiveTab} />
+    </div>
+  );
+};
+
+// Inline profile section with edit + logout
+import { Edit3, LogOut, Save, X } from "lucide-react";
+
+const ProfileSection = ({ onLogout }: { onLogout?: () => void }) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [name, setName] = useState("MealJoy User");
+  const [mood, setMood] = useState("Quick & Easy 🚀");
+  const [editName, setEditName] = useState(name);
+  const [editMood, setEditMood] = useState(mood);
+
+  const handleSave = () => {
+    setName(editName);
+    setMood(editMood);
+    setIsEditing(false);
+  };
+
+  return (
+    <div className="bg-card rounded-3xl p-6 border border-border text-center">
+      <div className="w-20 h-20 gradient-warm rounded-full mx-auto mb-4 flex items-center justify-center">
+        <span className="text-primary-foreground text-2xl font-bold">{name.slice(0, 2).toUpperCase()}</span>
+      </div>
+
+      {isEditing ? (
+        <div className="space-y-3 text-left">
+          <input
+            className="w-full p-3 rounded-2xl bg-background border-2 border-border text-foreground font-medium placeholder:text-muted-foreground focus:border-primary focus:outline-none transition-colors"
+            placeholder="Your Name"
+            value={editName}
+            onChange={(e) => setEditName(e.target.value)}
+          />
+          <input
+            className="w-full p-3 rounded-2xl bg-background border-2 border-border text-foreground font-medium placeholder:text-muted-foreground focus:border-primary focus:outline-none transition-colors"
+            placeholder="Cooking Mood"
+            value={editMood}
+            onChange={(e) => setEditMood(e.target.value)}
+          />
+          <div className="flex gap-2 pt-2">
+            <button
+              onClick={handleSave}
+              className="flex-1 gradient-fresh text-primary-foreground font-bold py-3 rounded-2xl flex items-center justify-center gap-2"
+            >
+              <Save className="w-4 h-4" /> Save
+            </button>
+            <button
+              onClick={() => setIsEditing(false)}
+              className="flex-1 bg-muted text-muted-foreground font-bold py-3 rounded-2xl flex items-center justify-center gap-2"
+            >
+              <X className="w-4 h-4" /> Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <h2 className="text-xl font-display font-bold text-foreground">{name}</h2>
+          <p className="text-muted-foreground text-sm mt-1">Cooking mood: {mood}</p>
+          <button
+            onClick={() => {
+              setEditName(name);
+              setEditMood(mood);
+              setIsEditing(true);
+            }}
+            className="mt-3 px-4 py-2 rounded-full bg-mint text-primary font-semibold text-sm inline-flex items-center gap-2"
+          >
+            <Edit3 className="w-4 h-4" /> Edit Profile
+          </button>
+        </>
+      )}
+
+      <div className="mt-6 grid grid-cols-3 gap-4">
+        {[
+          { label: "Recipes", value: String(allMeals.length) },
+          { label: "Favorites", value: "5" },
+          { label: "Planned", value: "7" },
+        ].map((stat) => (
+          <div key={stat.label} className="bg-mint rounded-2xl p-3">
+            <p className="text-xl font-bold text-primary">{stat.value}</p>
+            <p className="text-xs text-muted-foreground font-medium">{stat.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Logout */}
+      <button
+        onClick={onLogout}
+        className="mt-6 w-full py-3 rounded-2xl bg-destructive/10 text-destructive font-bold flex items-center justify-center gap-2 transition-colors hover:bg-destructive/20"
+      >
+        <LogOut className="w-4 h-4" /> Log Out
+      </button>
     </div>
   );
 };

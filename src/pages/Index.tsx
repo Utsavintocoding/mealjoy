@@ -10,6 +10,10 @@ type AppPhase = "splash" | "onboarding" | "profile" | "dashboard";
 const Index = () => {
   const [phase, setPhase] = useState<AppPhase>("splash");
 
+  const handleLogout = () => {
+    setPhase("splash");
+  };
+
   return (
     <div className="max-w-md mx-auto min-h-screen bg-background relative overflow-hidden">
       <AnimatePresence mode="wait">
@@ -22,7 +26,7 @@ const Index = () => {
         {phase === "profile" && (
           <ProfileSetup key="profile" onComplete={() => setPhase("dashboard")} />
         )}
-        {phase === "dashboard" && <Dashboard key="dashboard" />}
+        {phase === "dashboard" && <Dashboard key="dashboard" onLogout={handleLogout} />}
       </AnimatePresence>
     </div>
   );
