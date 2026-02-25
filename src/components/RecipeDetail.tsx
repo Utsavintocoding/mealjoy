@@ -1,28 +1,11 @@
 import { motion } from "framer-motion";
 import { ArrowLeft, Clock, Flame, Users, ChevronRight } from "lucide-react";
+import type { Meal } from "@/data/meals";
 
 type RecipeDetailProps = {
-  meal: { image: string; title: string; time: string; calories: string };
+  meal: Meal;
   onBack: () => void;
 };
-
-const steps = [
-  "Prep all vegetables — wash, peel, and chop into bite-sized pieces.",
-  "Heat oil in a pan over medium-high heat until shimmering.",
-  "Cook the protein for 5-6 minutes, turning once halfway through.",
-  "Add vegetables and cook for 3-4 minutes until tender-crisp.",
-  "Season with salt, pepper, and your favorite spices to taste.",
-  "Plate up and garnish with fresh herbs. Enjoy! 🎉",
-];
-
-const ingredients = [
-  "2 chicken breasts (or tofu)",
-  "1 cup mixed vegetables",
-  "2 tbsp olive oil",
-  "1 clove garlic, minced",
-  "Salt & pepper to taste",
-  "Fresh herbs for garnish",
-];
 
 const RecipeDetail = ({ meal, onBack }: RecipeDetailProps) => {
   return (
@@ -38,11 +21,21 @@ const RecipeDetail = ({ meal, onBack }: RecipeDetailProps) => {
           <ArrowLeft className="w-5 h-5 text-foreground" />
         </button>
         <div className="absolute bottom-4 left-6 right-6">
+          <p className="text-primary-foreground/80 text-sm font-semibold mb-1">{meal.cuisine}</p>
           <h1 className="text-2xl font-display font-black text-card">{meal.title}</h1>
         </div>
       </div>
 
       <div className="px-6 pt-6">
+        {/* Tags */}
+        <div className="flex gap-2 mb-4">
+          {meal.tags.map((tag) => (
+            <span key={tag} className="px-3 py-1 bg-mint rounded-full text-xs font-bold text-primary">
+              {tag}
+            </span>
+          ))}
+        </div>
+
         {/* Stats */}
         <div className="flex gap-4 mb-6">
           {[
@@ -64,7 +57,7 @@ const RecipeDetail = ({ meal, onBack }: RecipeDetailProps) => {
         {/* Ingredients */}
         <h2 className="text-xl font-display font-bold text-foreground mb-3">Ingredients</h2>
         <div className="bg-peach rounded-2xl p-4 mb-6 space-y-2">
-          {ingredients.map((ing, i) => (
+          {meal.ingredients.map((ing, i) => (
             <div key={i} className="flex items-center gap-3">
               <div className="w-2 h-2 rounded-full bg-accent" />
               <span className="text-foreground text-sm font-medium">{ing}</span>
@@ -77,7 +70,7 @@ const RecipeDetail = ({ meal, onBack }: RecipeDetailProps) => {
           Step-by-Step Guide
         </h2>
         <div className="space-y-4">
-          {steps.map((step, i) => (
+          {meal.steps.map((step, i) => (
             <motion.div
               key={i}
               initial={{ opacity: 0, x: -20 }}
