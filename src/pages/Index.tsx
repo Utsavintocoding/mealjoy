@@ -1,12 +1,29 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+import { useState } from "react";
+import { AnimatePresence } from "framer-motion";
+import SplashScreen from "@/components/SplashScreen";
+import OnboardingFlow from "@/components/OnboardingFlow";
+import ProfileSetup from "@/components/ProfileSetup";
+import Dashboard from "@/components/Dashboard";
+
+type AppPhase = "splash" | "onboarding" | "profile" | "dashboard";
 
 const Index = () => {
+  const [phase, setPhase] = useState<AppPhase>("splash");
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <div className="text-center">
-        <h1 className="mb-4 text-4xl font-bold">Welcome to Your Blank App</h1>
-        <p className="text-xl text-muted-foreground">Start building your amazing project here!</p>
-      </div>
+    <div className="max-w-md mx-auto min-h-screen bg-background relative overflow-hidden">
+      <AnimatePresence mode="wait">
+        {phase === "splash" && (
+          <SplashScreen key="splash" onComplete={() => setPhase("onboarding")} />
+        )}
+        {phase === "onboarding" && (
+          <OnboardingFlow key="onboarding" onComplete={() => setPhase("profile")} />
+        )}
+        {phase === "profile" && (
+          <ProfileSetup key="profile" onComplete={() => setPhase("dashboard")} />
+        )}
+        {phase === "dashboard" && <Dashboard key="dashboard" />}
+      </AnimatePresence>
     </div>
   );
 };
