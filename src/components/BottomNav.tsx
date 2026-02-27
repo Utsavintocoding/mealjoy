@@ -1,4 +1,4 @@
-import { Home, CalendarDays, ChefHat, User } from "lucide-react";
+import { Home, CalendarDays, ChefHat, User, ShoppingBasket } from "lucide-react";
 
 type BottomNavProps = {
   active: string;
@@ -7,6 +7,7 @@ type BottomNavProps = {
 
 const tabs = [
   { id: "home", icon: Home, label: "Home" },
+  { id: "pantry", icon: ShoppingBasket, label: "Pantry" },
   { id: "planner", icon: CalendarDays, label: "Planner" },
   { id: "recipe", icon: ChefHat, label: "Recipes" },
   { id: "profile", icon: User, label: "Profile" },
@@ -23,18 +24,14 @@ const BottomNav = ({ active, onNavigate }: BottomNavProps) => {
             <button
               key={tab.id}
               onClick={() => onNavigate(tab.id)}
-              className={`flex flex-col items-center gap-0.5 py-1 px-3 rounded-xl transition-colors ${
+              className={`flex flex-col items-center gap-0.5 py-1 px-2 rounded-xl transition-colors ${
                 isActive ? "text-primary" : "text-muted-foreground"
               }`}
             >
-              <div
-                className={`p-1.5 rounded-xl transition-colors ${
-                  isActive ? "bg-mint" : ""
-                }`}
-              >
+              <div className={`p-1.5 rounded-xl transition-colors ${isActive ? "bg-mint" : ""}`}>
                 <Icon className="w-5 h-5" />
               </div>
-              <span className="text-xs font-semibold">{tab.label}</span>
+              <span className="text-[10px] font-semibold">{tab.label}</span>
             </button>
           );
         })}
