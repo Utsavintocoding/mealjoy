@@ -1,15 +1,17 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Sparkles, Sun, Sunrise, Moon, Globe, SlidersHorizontal, Timer, DollarSign, Leaf, Zap } from "lucide-react";
+import { Search, Sparkles, Sun, Sunrise, Moon, Globe, SlidersHorizontal, Timer, DollarSign, Leaf, Zap, Settings } from "lucide-react";
 import MealCard from "@/components/MealCard";
 import BottomNav from "@/components/BottomNav";
 import WeeklyPlanner from "@/components/WeeklyPlanner";
 import RecipeDetail from "@/components/RecipeDetail";
 import PantryScreen from "@/components/PantryScreen";
 import ProfileSection from "@/components/ProfileSection";
+import SettingsScreen from "@/components/SettingsScreen";
 import Chatbot from "@/components/Chatbot";
 import { allMeals, getCuisines, getDiets, getBudgets, type Meal } from "@/data/meals";
 import { Slider } from "@/components/ui/slider";
+import { toast } from "sonner";
 
 const moodFilters = [
   { label: "All", icon: Sparkles },
@@ -17,6 +19,8 @@ const moodFilters = [
   { label: "Lunch", icon: Sun },
   { label: "Dinner", icon: Moon },
 ];
+
+const timeOptions = ["Any", "5 min", "10 min", "15 min", "20 min", "30 min", "45 min", "60 min+"];
 
 const Dashboard = ({ onLogout }: { onLogout?: () => void }) => {
   const [activeTab, setActiveTab] = useState("home");
@@ -28,6 +32,8 @@ const Dashboard = ({ onLogout }: { onLogout?: () => void }) => {
   const [showFilters, setShowFilters] = useState(false);
   const [selectedRecipe, setSelectedRecipe] = useState<Meal | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [plannerTimeFilter, setPlannerTimeFilter] = useState("Any");
+  const [showSettings, setShowSettings] = useState(false);
 
   const cuisines = getCuisines();
   const diets = getDiets();
@@ -43,8 +49,28 @@ const Dashboard = ({ onLogout }: { onLogout?: () => void }) => {
     return moodMatch && cuisineMatch && budgetMatch && dietMatch && durationMatch && searchMatch;
   });
 
+  const plannerFilteredMeals = allMeals.filter((m) => {
+    if (plannerTimeFilter === "Any") return true;
+    const minutes = parseInt(plannerTimeFilter);
+    return m.durationMin <= minutes;
+  });
+
+  const handleAddToPlanner = (meal: Meal) => {
+    toast.success(`${meal.title} added to planner!`);
+  };
+
+  if (showSettings) {
+    return (
+      <div className="min-h-screen bg-background pb-24">
+        <SettingsScreen onBack={() => setShowSettings(false)} />
+        <Chatbot />
+        <BottomNav active={activeTab} onNavigate={setActiveTab} />
+      </div>
+    );
+  }
+
   if (selectedRecipe) {
-    return <RecipeDetail meal={selectedRecipe} onBack={() => setSelectedRecipe(null)} />;
+    return <RecipeDetail meal={selectedRecipe} onBack={() => setSelectedRecipe(null)} onAddToPlanner={handleAddToPlanner} />;
   }
 
   return (
@@ -58,9 +84,14 @@ const Dashboard = ({ onLogout }: { onLogout?: () => void }) => {
                 <p className="text-muted-foreground font-medium">Good morning 👋</p>
                 <h1 className="text-2xl font-display font-black text-foreground">What's cooking today?</h1>
               </div>
-              <button onClick={() => setActiveTab("profile")} className="w-10 h-10 gradient-warm rounded-full flex items-center justify-center">
-                <span className="text-primary-foreground font-bold text-sm">MJ</span>
-              </button>
+              <div className="flex gap-2">
+                <button onClick={() => setShowSettings(true)} className="w-10 h-10 bg-card border border-border rounded-full flex items-center justify-center">
+                  <Settings className="w-5 h-5 text-muted-foreground" />
+                </button>
+                <button onClick={() => setActiveTab("profile")} className="w-10 h-10 gradient-warm rounded-full flex items-center justify-center">
+                  <span className="text-primary-foreground font-bold text-sm">MJ</span>
+                </button>
+              </div>
             </div>
 
             {/* Search */}
@@ -151,7 +182,6 @@ const Dashboard = ({ onLogout }: { onLogout?: () => void }) => {
               {showFilters && (
                 <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden mb-4">
                   <div className="bg-card rounded-2xl p-4 border border-border space-y-4">
-                    {/* Duration slider */}
                     <div>
                       <div className="flex items-center gap-2 mb-2">
                         <Timer className="w-4 h-4 text-primary" />
@@ -162,8 +192,6 @@ const Dashboard = ({ onLogout }: { onLogout?: () => void }) => {
                         <span>10 min</span><span>60 min</span>
                       </div>
                     </div>
-
-                    {/* Budget filter */}
                     <div>
                       <div className="flex items-center gap-2 mb-2">
                         <DollarSign className="w-4 h-4 text-primary" />
@@ -177,8 +205,6 @@ const Dashboard = ({ onLogout }: { onLogout?: () => void }) => {
                         ))}
                       </div>
                     </div>
-
-                    {/* Diet filter */}
                     <div>
                       <div className="flex items-center gap-2 mb-2">
                         <Leaf className="w-4 h-4 text-primary" />
@@ -212,7 +238,28 @@ const Dashboard = ({ onLogout }: { onLogout?: () => void }) => {
 
         {activeTab === "planner" && (
           <motion.div key="planner" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <WeeklyPlanner onSelectRecipe={(meal) => setSelectedRecipe(meal)} />
+            <div className="px-6 pt-8 pb-2">
+              <h1 className="text-2xl font-display font-black text-foreground mb-2">Weekly Planner 📅</h1>
+              {/* Time selector */}
+              <p className="text-xs text-muted-foreground font-semibold mb-2">How much time do you have?</p>
+              <div className="flex gap-2 overflow-x-auto pb-3">
+                {timeOptions.map((t) => (
+                  <button key={t} onClick={() => setPlannerTimeFilter(t)}
+                    className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all ${
+                      plannerTimeFilter === t ? "gradient-fresh text-primary-foreground shadow-md" : "bg-muted text-muted-foreground"
+                    }`}>
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {plannerTimeFilter !== "Any" && plannerFilteredMeals.length === 0 ? (
+              <div className="px-6 py-12 text-center">
+                <p className="text-muted-foreground">No meals under {plannerTimeFilter} — try a longer time or add new recipes</p>
+              </div>
+            ) : (
+              <WeeklyPlanner onSelectRecipe={(meal) => setSelectedRecipe(meal)} timeFilter={plannerTimeFilter} />
+            )}
           </motion.div>
         )}
 
@@ -235,7 +282,12 @@ const Dashboard = ({ onLogout }: { onLogout?: () => void }) => {
 
         {activeTab === "profile" && (
           <motion.div key="profile" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="px-6 pt-8">
-            <h1 className="text-2xl font-display font-black text-foreground mb-4">Profile</h1>
+            <div className="flex items-center justify-between mb-4">
+              <h1 className="text-2xl font-display font-black text-foreground">Profile</h1>
+              <button onClick={() => setShowSettings(true)} className="w-10 h-10 bg-card border border-border rounded-full flex items-center justify-center">
+                <Settings className="w-5 h-5 text-muted-foreground" />
+              </button>
+            </div>
             <ProfileSection onLogout={onLogout} />
           </motion.div>
         )}

@@ -4,26 +4,38 @@ import { supabase } from "@/integrations/supabase/client";
 import SplashScreen from "@/components/SplashScreen";
 import OnboardingFlow from "@/components/OnboardingFlow";
 import ProfileSetup from "@/components/ProfileSetup";
+import PostSignupOnboarding from "@/components/PostSignupOnboarding";
 import Dashboard from "@/components/Dashboard";
 import AuthPage from "@/components/AuthPage";
 
-type AppPhase = "splash" | "auth" | "onboarding" | "profile" | "dashboard";
+type AppPhase = "splash" | "auth" | "onboarding" | "profile" | "post-signup" | "dashboard";
 
 const Index = () => {
   const [phase, setPhase] = useState<AppPhase>("splash");
   const [checkingAuth, setCheckingAuth] = useState(true);
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session) {
-        setPhase("dashboard");
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === "SIGNED_IN" && session) {
+        // Check if profile has a name (i.e. onboarding completed)
+        const { data } = await supabase.from("profiles").select("name").eq("user_id", session.user.id).single();
+        if (data?.name) {
+          setPhase("dashboard");
+        } else {
+          setPhase("post-signup");
+        }
       }
       setCheckingAuth(false);
     });
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session) {
-        setPhase("dashboard");
+        const { data } = await supabase.from("profiles").select("name").eq("user_id", session.user.id).single();
+        if (data?.name) {
+          setPhase("dashboard");
+        } else {
+          setPhase("post-signup");
+        }
       }
       setCheckingAuth(false);
     });
@@ -46,7 +58,10 @@ const Index = () => {
           <SplashScreen key="splash" onComplete={() => setPhase("auth")} />
         )}
         {phase === "auth" && (
-          <AuthPage key="auth" onAuth={() => setPhase("dashboard")} />
+          <AuthPage key="auth" onAuth={() => setPhase("post-signup")} />
+        )}
+        {phase === "post-signup" && (
+          <PostSignupOnboarding key="post-signup" onComplete={() => setPhase("dashboard")} />
         )}
         {phase === "onboarding" && (
           <OnboardingFlow key="onboarding" onComplete={() => setPhase("profile")} />
