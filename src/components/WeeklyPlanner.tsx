@@ -6,17 +6,13 @@ import { allMeals, getMealsByCategory, type Meal } from "@/data/meals";
 const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const mealTypes: Array<"Breakfast" | "Lunch" | "Dinner"> = ["Breakfast", "Lunch", "Dinner"];
 
-const WeeklyPlanner = ({ onSelectRecipe }: { onSelectRecipe: (meal: Meal) => void }) => {
+const WeeklyPlanner = ({ onSelectRecipe, timeFilter }: { onSelectRecipe: (meal: Meal) => void; timeFilter?: string }) => {
   const [selectedDay, setSelectedDay] = useState("Mon");
   const [plannedMeals, setPlannedMeals] = useState<Record<string, Record<string, Meal | null>>>(() => {
     const init: Record<string, Record<string, Meal | null>> = {};
     days.forEach((d) => {
       init[d] = { Breakfast: null, Lunch: null, Dinner: null };
     });
-    // Pre-fill some slots
-    init["Mon"]["Lunch"] = allMeals[10]; // Buddha Bowl
-    init["Mon"]["Dinner"] = allMeals[8]; // Pad Thai
-    init["Fri"]["Dinner"] = allMeals[0]; // Butter Chicken
     return init;
   });
   const [pickerOpen, setPickerOpen] = useState<{ day: string; type: string } | null>(null);
@@ -38,13 +34,20 @@ const WeeklyPlanner = ({ onSelectRecipe }: { onSelectRecipe: (meal: Meal) => voi
     }));
   };
 
-  const pickerMeals = pickerOpen ? getMealsByCategory(pickerOpen.type) : [];
+  const getPickerMeals = () => {
+    if (!pickerOpen) return [];
+    let meals = getMealsByCategory(pickerOpen.type);
+    if (timeFilter && timeFilter !== "Any") {
+      const minutes = parseInt(timeFilter);
+      meals = meals.filter((m) => m.durationMin <= minutes);
+    }
+    return meals;
+  };
+
+  const pickerMeals = getPickerMeals();
 
   return (
-    <div className="px-6 pt-8">
-      <h1 className="text-2xl font-display font-black text-foreground mb-2">Weekly Planner 📅</h1>
-      <p className="text-muted-foreground mb-6">Tap a slot to add or change a meal</p>
-
+    <div className="px-6">
       {/* Day selector */}
       <div className="flex gap-2 mb-6 overflow-x-auto pb-1">
         {days.map((day) => (
@@ -86,7 +89,7 @@ const WeeklyPlanner = ({ onSelectRecipe }: { onSelectRecipe: (meal: Meal) => voi
                   <div className="flex-1">
                     <p className="text-xs text-muted-foreground font-semibold uppercase">{type}</p>
                     <p className="font-bold text-foreground">{meal.title}</p>
-                    <p className="text-xs text-muted-foreground">{meal.cuisine} · {meal.time}</p>
+                    <p className="text-xs text-muted-foreground">{meal.cuisine} · ⏱ {meal.time}</p>
                   </div>
                   <button
                     onClick={(e) => handleClearSlot(selectedDay, type, e)}
@@ -132,22 +135,27 @@ const WeeklyPlanner = ({ onSelectRecipe }: { onSelectRecipe: (meal: Meal) => voi
               </h3>
               <p className="text-sm text-muted-foreground mb-4">
                 {pickerMeals.length} {pickerOpen.type.toLowerCase()} options
+                {timeFilter && timeFilter !== "Any" && ` (≤ ${timeFilter})`}
               </p>
-              <div className="space-y-3">
-                {pickerMeals.map((meal) => (
-                  <button
-                    key={meal.id}
-                    onClick={() => handlePickMeal(meal)}
-                    className="w-full flex items-center gap-3 p-3 rounded-2xl bg-background border border-border text-left transition-colors hover:border-primary"
-                  >
-                    <img src={meal.image} alt={meal.title} className="w-12 h-12 rounded-xl object-cover" />
-                    <div className="flex-1">
-                      <p className="font-bold text-foreground text-sm">{meal.title}</p>
-                      <p className="text-xs text-muted-foreground">{meal.cuisine} · {meal.time} · {meal.calories}</p>
-                    </div>
-                  </button>
-                ))}
-              </div>
+              {pickerMeals.length === 0 ? (
+                <p className="text-center text-muted-foreground py-8">No meals match the time filter — try a longer time</p>
+              ) : (
+                <div className="space-y-3">
+                  {pickerMeals.map((meal) => (
+                    <button
+                      key={meal.id}
+                      onClick={() => handlePickMeal(meal)}
+                      className="w-full flex items-center gap-3 p-3 rounded-2xl bg-background border border-border text-left transition-colors hover:border-primary"
+                    >
+                      <img src={meal.image} alt={meal.title} className="w-12 h-12 rounded-xl object-cover" />
+                      <div className="flex-1">
+                        <p className="font-bold text-foreground text-sm">{meal.title}</p>
+                        <p className="text-xs text-muted-foreground">{meal.cuisine} · ⏱ {meal.time} · {meal.calories}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </motion.div>
           </motion.div>
         )}
