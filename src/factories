@@ -1,0 +1,694 @@
+/**
+ * @file auth.test.tsx
+ * Tests for authentication-related behaviour:
+ *  - Login form validation
+ *  - Sign-up validation
+ *  - Supabase auth calls
+ *  - Redirect after login
+ */
+
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, fireEvent, waitFor } from "../test/utils";
+import React from "react";
+
+// ----------------------------------------------------------------
+// Helpers — inline minimal auth form component that mirrors what
+// MealJoy's Auth page does (adjust import path once repo is cloned)
+// ----------------------------------------------------------------
+
+// Mock supabase
+const mockSignIn = vi.fn();
+const mockSignUp = vi.fn();
+vi.mock("@/integrations/supabase/client", () => ({
+  supabase: {
+    auth: {
+      signInWithPassword: (...args: unknown[]) => mockSignIn(...args),
+      signUp: (...args: unknown[]) => mockSignUp(...args),
+      getSession: vi.fn().mockResolvedValue({ data: { session: null }, error: null }),
+      onAuthStateChange: vi.fn(() => ({
+        data: { subscription: { unsubscribe: vi.fn() } },
+      })),
+    },
+  },
+}));
+
+// Minimal inline auth form for testing (replace with real import when available)
+function LoginForm({ onSuccess }: { onSuccess?: () => void }) {
+  const [email, setEmail] = React.useState("");
+  const [password, setPassword] = React.useState("");
+  const [error, setError] = React.useState("");
+  const [loading, setLoading] = React.useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email) { setError("Email is required"); return; }
+    if (!password) { setError("Password is required"); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setError("Invalid email format");
+      return;
+    }
+    setLoading(true);
+    const { supabase } = await import("@/integrations/supabase/client");
+    const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
+    setLoading(false);
+    if (authError) { setError(authError.message); return; }
+    onSuccess?.();
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      {error && <p role="alert">{error}</p>}
+      <label>
+        Email
+        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+      </label>
+      <label>
+        Password
+        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+      </label>
+      <button type="submit" disabled={loading}>
+        {loading ? "Signing in…" : "Sign In"}
+      </button>
+    </form>
+  );
+}
+
+// ----------------------------------------------------------------
+// Tests
+// ----------------------------------------------------------------
+
+describe("Login Form — validation", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("renders email and password fields", () => {
+    render(<LoginForm />);
+    expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
+  });
+
+  it("shows error when email is missing", async () => {
+    render(<LoginForm />);
+    fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/email is required/i);
+  });
+
+  it("shows error when password is missing", async () => {
+    render(<LoginForm />);
+    fireEvent.change(screen.getByLabelText(/email/i), {
+      target: { value: "valid@example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/password is required/i);
+  });
+
+  it("shows error for invalid email format", async () => {
+    render(<LoginForm />);
+    fireEvent.change(screen.getByLabelText(/email/i), {
+      target: { value: "not-an-email" },
+    });
+    fireEvent.change(screen.getByLabelText(/password/i), {
+      target: { value: "secret123" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/invalid email/i);
+  });
+});
+
+describe("Login Form — Supabase integration", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("calls supabase.auth.signInWithPassword with correct credentials", async () => {
+    mockSignIn.mockResolvedValueOnce({ error: null });
+    render(<LoginForm />);
+
+    fireEvent.change(screen.getByLabelText(/email/i), {
+      target: { value: "user@mealjoy.com" },
+    });
+    fireEvent.change(screen.getByLabelText(/password/i), {
+      target: { value: "password123" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
+
+    await waitFor(() => {
+      expect(mockSignIn).toHaveBeenCalledWith({
+        email: "user@mealjoy.com",
+        password: "password123",
+      });
+    });
+  });
+
+  it("shows backend error message on failed login", async () => {
+    mockSignIn.mockResolvedValueOnce({
+      error: { message: "Invalid login credentials" },
+    });
+    render(<LoginForm />);
+
+    fireEvent.change(screen.getByLabelText(/email/i), {
+      target: { value: "wrong@mealjoy.com" },
+    });
+    fireEvent.change(screen.getByLabelText(/password/i), {
+      target: { value: "wrongpass" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/invalid login credentials/i);
+  });
+
+  it("calls onSuccess callback after successful login", async () => {
+    mockSignIn.mockResolvedValueOnce({ error: null });
+    const onSuccess = vi.fn();
+    render(<LoginForm onSuccess={onSuccess} />);
+
+    fireEvent.change(screen.getByLabelText(/email/i), {
+      target: { value: "user@mealjoy.com" },
+    });
+    fireEvent.change(screen.getByLabelText(/password/i), {
+      target: { value: "password123" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
+  });
+
+  it("disables submit button while loading", async () => {
+    // Never resolves — simulates a slow network
+    mockSignIn.mockImplementationOnce(() => new Promise(() => {}));
+    render(<LoginForm />);
+
+    fireEvent.change(screen.getByLabelText(/email/i), {
+      target: { value: "user@mealjoy.com" },
+    });
+    fireEvent.change(screen.getByLabelText(/password/i), {
+      target: { value: "password123" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /signing in/i })).toBeDisabled();
+    });
+  });
+});
+
+/**
+ * @file cart.test.ts
+ * Unit tests for cart logic (adding, removing, updating quantity, totals).
+ * These test pure functions / state logic independent of UI.
+ */
+
+import { describe, it, expect } from "vitest";
+
+// ----------------------------------------------------------------
+// Pure cart utility functions — mirror what your cart hook/store does
+// These tests document the expected behaviour and can be imported
+// directly once you extract this logic into src/lib/cart.ts
+// ----------------------------------------------------------------
+
+type CartItem = {
+  id: string;
+  meal_id: string;
+  name: string;
+  price: number;
+  quantity: number;
+};
+
+function addToCart(cart: CartItem[], item: Omit<CartItem, "quantity">): CartItem[] {
+  const existing = cart.find((c) => c.meal_id === item.meal_id);
+  if (existing) {
+    return cart.map((c) =>
+      c.meal_id === item.meal_id ? { ...c, quantity: c.quantity + 1 } : c
+    );
+  }
+  return [...cart, { ...item, quantity: 1 }];
+}
+
+function removeFromCart(cart: CartItem[], meal_id: string): CartItem[] {
+  return cart.filter((c) => c.meal_id !== meal_id);
+}
+
+function updateQuantity(cart: CartItem[], meal_id: string, quantity: number): CartItem[] {
+  if (quantity <= 0) return removeFromCart(cart, meal_id);
+  return cart.map((c) => (c.meal_id === meal_id ? { ...c, quantity } : c));
+}
+
+function getCartTotal(cart: CartItem[]): number {
+  return parseFloat(
+    cart.reduce((sum, item) => sum + item.price * item.quantity, 0).toFixed(2)
+  );
+}
+
+function getCartItemCount(cart: CartItem[]): number {
+  return cart.reduce((sum, item) => sum + item.quantity, 0);
+}
+
+// ----------------------------------------------------------------
+// Test data
+// ----------------------------------------------------------------
+const chickenBowl: Omit<CartItem, "quantity"> = {
+  id: "item-1",
+  meal_id: "meal-1",
+  name: "Grilled Chicken Bowl",
+  price: 12.99,
+};
+
+const pastaSalad: Omit<CartItem, "quantity"> = {
+  id: "item-2",
+  meal_id: "meal-2",
+  name: "Pasta Salad",
+  price: 8.5,
+};
+
+// ----------------------------------------------------------------
+// Tests
+// ----------------------------------------------------------------
+
+describe("Cart — addToCart", () => {
+  it("adds a new item with quantity 1", () => {
+    const cart = addToCart([], chickenBowl);
+    expect(cart).toHaveLength(1);
+    expect(cart[0].quantity).toBe(1);
+    expect(cart[0].name).toBe("Grilled Chicken Bowl");
+  });
+
+  it("increments quantity when the same meal is added again", () => {
+    const cart = addToCart([{ ...chickenBowl, quantity: 1 }], chickenBowl);
+    expect(cart).toHaveLength(1);
+    expect(cart[0].quantity).toBe(2);
+  });
+
+  it("can hold multiple distinct items", () => {
+    let cart = addToCart([], chickenBowl);
+    cart = addToCart(cart, pastaSalad);
+    expect(cart).toHaveLength(2);
+  });
+
+  it("does not mutate the original cart array", () => {
+    const original: CartItem[] = [];
+    const updated = addToCart(original, chickenBowl);
+    expect(original).toHaveLength(0);
+    expect(updated).toHaveLength(1);
+  });
+});
+
+describe("Cart — removeFromCart", () => {
+  it("removes an item by meal_id", () => {
+    const cart: CartItem[] = [
+      { ...chickenBowl, quantity: 2 },
+      { ...pastaSalad, quantity: 1 },
+    ];
+    const result = removeFromCart(cart, "meal-1");
+    expect(result).toHaveLength(1);
+    expect(result[0].meal_id).toBe("meal-2");
+  });
+
+  it("returns the same cart if meal_id is not found", () => {
+    const cart: CartItem[] = [{ ...chickenBowl, quantity: 1 }];
+    const result = removeFromCart(cart, "nonexistent");
+    expect(result).toHaveLength(1);
+  });
+
+  it("returns empty array when last item is removed", () => {
+    const cart: CartItem[] = [{ ...chickenBowl, quantity: 1 }];
+    expect(removeFromCart(cart, "meal-1")).toHaveLength(0);
+  });
+});
+
+describe("Cart — updateQuantity", () => {
+  it("updates quantity to a given value", () => {
+    const cart: CartItem[] = [{ ...chickenBowl, quantity: 1 }];
+    const result = updateQuantity(cart, "meal-1", 5);
+    expect(result[0].quantity).toBe(5);
+  });
+
+  it("removes item when quantity is set to 0", () => {
+    const cart: CartItem[] = [{ ...chickenBowl, quantity: 3 }];
+    expect(updateQuantity(cart, "meal-1", 0)).toHaveLength(0);
+  });
+
+  it("removes item when quantity is negative", () => {
+    const cart: CartItem[] = [{ ...chickenBowl, quantity: 2 }];
+    expect(updateQuantity(cart, "meal-1", -1)).toHaveLength(0);
+  });
+
+  it("leaves other items untouched", () => {
+    const cart: CartItem[] = [
+      { ...chickenBowl, quantity: 1 },
+      { ...pastaSalad, quantity: 2 },
+    ];
+    const result = updateQuantity(cart, "meal-1", 4);
+    const pasta = result.find((c) => c.meal_id === "meal-2");
+    expect(pasta?.quantity).toBe(2);
+  });
+});
+
+describe("Cart — getCartTotal", () => {
+  it("returns 0 for an empty cart", () => {
+    expect(getCartTotal([])).toBe(0);
+  });
+
+  it("calculates total for a single item", () => {
+    expect(getCartTotal([{ ...chickenBowl, quantity: 2 }])).toBe(25.98);
+  });
+
+  it("sums up multiple items correctly", () => {
+    const cart: CartItem[] = [
+      { ...chickenBowl, quantity: 1 },
+      { ...pastaSalad, quantity: 2 },
+    ];
+    // 12.99 + 2 * 8.50 = 29.99
+    expect(getCartTotal(cart)).toBe(29.99);
+  });
+
+  it("rounds to 2 decimal places", () => {
+    const weirdPrice: Omit<CartItem, "quantity"> = {
+      id: "x",
+      meal_id: "x",
+      name: "X",
+      price: 3.333,
+    };
+    const total = getCartTotal([{ ...weirdPrice, quantity: 3 }]);
+    expect(total.toString()).toMatch(/^\d+\.\d{1,2}$/);
+  });
+});
+
+describe("Cart — getCartItemCount", () => {
+  it("returns 0 for empty cart", () => {
+    expect(getCartItemCount([])).toBe(0);
+  });
+
+  it("sums quantities across all items", () => {
+    const cart: CartItem[] = [
+      { ...chickenBowl, quantity: 3 },
+      { ...pastaSalad, quantity: 2 },
+    ];
+    expect(getCartItemCount(cart)).toBe(5);
+  });
+});
+
+/**
+ * @file hooks.test.tsx
+ * Tests for React Query hooks that fetch data from Supabase.
+ * Uses vi.mock to keep tests fast and offline.
+ */
+
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { renderHook, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import React from "react";
+import { makeMeal, makeOrder } from "../test/utils";
+
+// ----------------------------------------------------------------
+// Supabase mock
+// ----------------------------------------------------------------
+
+const mockFrom = vi.fn();
+vi.mock("@/integrations/supabase/client", () => ({
+  supabase: { from: (...args: unknown[]) => mockFrom(...args) },
+}));
+
+// ----------------------------------------------------------------
+// Inline hooks (mirror src/hooks/useMeals.ts, src/hooks/useOrders.ts)
+// ----------------------------------------------------------------
+
+import { useQuery } from "@tanstack/react-query";
+
+function useMeals(category?: string) {
+  return useQuery({
+    queryKey: ["meals", category],
+    queryFn: async () => {
+      const { supabase } = await import("@/integrations/supabase/client");
+      let query = supabase.from("meals").select("*").order("name");
+      if (category && category !== "All") {
+        query = (query as unknown as { eq: (col: string, val: string) => typeof query }).eq("category", category);
+      }
+      const { data, error } = await (query as unknown as Promise<{ data: unknown[]; error: null | { message: string } }>);
+      if (error) throw new Error(error.message);
+      return data;
+    },
+  });
+}
+
+function useOrders(userId: string) {
+  return useQuery({
+    queryKey: ["orders", userId],
+    queryFn: async () => {
+      const { supabase } = await import("@/integrations/supabase/client");
+      const { data, error } = await supabase
+        .from("orders")
+        .select("*")
+        .eq("user_id", userId)
+        .order("created_at") as unknown as { data: unknown[]; error: null | { message: string } };
+      if (error) throw new Error(error.message);
+      return data;
+    },
+  });
+}
+
+// ----------------------------------------------------------------
+// Wrapper
+// ----------------------------------------------------------------
+
+function createWrapper() {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return ({ children }: { children: React.ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+}
+
+// ----------------------------------------------------------------
+// Tests — useMeals
+// ----------------------------------------------------------------
+
+describe("useMeals hook", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns meals on success", async () => {
+    const meals = [makeMeal({ id: "1" }), makeMeal({ id: "2", name: "Salad" })];
+    mockFrom.mockReturnValue({
+      select: vi.fn().mockReturnThis(),
+      order: vi.fn().mockReturnThis(),
+      then: (resolve: (v: { data: typeof meals; error: null }) => void) =>
+        resolve({ data: meals, error: null }),
+    });
+
+    const { result } = renderHook(() => useMeals(), { wrapper: createWrapper() });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toHaveLength(2);
+  });
+
+  it("returns error state when Supabase returns an error", async () => {
+    mockFrom.mockReturnValue({
+      select: vi.fn().mockReturnThis(),
+      order: vi.fn().mockReturnThis(),
+      then: (resolve: (v: { data: null; error: { message: string } }) => void) =>
+        resolve({ data: null, error: { message: "Database unavailable" } }),
+    });
+
+    const { result } = renderHook(() => useMeals(), { wrapper: createWrapper() });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect((result.current.error as Error).message).toBe("Database unavailable");
+  });
+
+  it("returns loading state initially", () => {
+    mockFrom.mockReturnValue({
+      select: vi.fn().mockReturnThis(),
+      order: vi.fn().mockReturnThis(),
+      then: () => new Promise(() => {}), // never resolves
+    });
+
+    const { result } = renderHook(() => useMeals(), { wrapper: createWrapper() });
+    expect(result.current.isLoading).toBe(true);
+  });
+});
+
+// ----------------------------------------------------------------
+// Tests — useOrders
+// ----------------------------------------------------------------
+
+describe("useOrders hook", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("fetches orders for a given user", async () => {
+    const orders = [makeOrder({ id: "o1" }), makeOrder({ id: "o2" })];
+    mockFrom.mockReturnValue({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      order: vi.fn().mockReturnThis(),
+      then: (resolve: (v: { data: typeof orders; error: null }) => void) =>
+        resolve({ data: orders, error: null }),
+    });
+
+    const { result } = renderHook(() => useOrders("user-123"), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toHaveLength(2);
+  });
+
+  it("returns empty array when user has no orders", async () => {
+    mockFrom.mockReturnValue({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      order: vi.fn().mockReturnThis(),
+      then: (resolve: (v: { data: []; error: null }) => void) =>
+        resolve({ data: [], error: null }),
+    });
+
+    const { result } = renderHook(() => useOrders("new-user"), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toHaveLength(0);
+  });
+});
+
+/**
+ * @file navigation.test.tsx
+ * Tests for routing, navigation guards, and redirect behaviour.
+ */
+
+import { describe, it, expect, vi } from "vitest";
+import { render, screen, fireEvent } from "../test/utils";
+import React from "react";
+import { Link, useNavigate } from "react-router-dom";
+
+// ----------------------------------------------------------------
+// Inline components
+// ----------------------------------------------------------------
+
+function NavBar({
+  isLoggedIn,
+  cartCount,
+}: {
+  isLoggedIn: boolean;
+  cartCount: number;
+}) {
+  return (
+    <nav aria-label="Main navigation">
+      <Link to="/">Home</Link>
+      <Link to="/menu">Menu</Link>
+      {isLoggedIn ? (
+        <>
+          <Link to="/orders">My Orders</Link>
+          <Link to="/profile">Profile</Link>
+          <Link to="/cart" aria-label={`Cart (${cartCount} items)`}>
+            Cart ({cartCount})
+          </Link>
+        </>
+      ) : (
+        <Link to="/auth">Sign In</Link>
+      )}
+    </nav>
+  );
+}
+
+function ProtectedRoute({
+  isLoggedIn,
+  children,
+}: {
+  isLoggedIn: boolean;
+  children: React.ReactNode;
+}) {
+  const navigate = useNavigate();
+  React.useEffect(() => {
+    if (!isLoggedIn) navigate("/auth", { replace: true });
+  }, [isLoggedIn, navigate]);
+
+  if (!isLoggedIn) return null;
+  return <>{children}</>;
+}
+
+// ----------------------------------------------------------------
+// Tests — NavBar
+// ----------------------------------------------------------------
+
+describe("NavBar — unauthenticated", () => {
+  it("shows Home and Menu links for all users", () => {
+    render(<NavBar isLoggedIn={false} cartCount={0} />);
+    expect(screen.getByRole("link", { name: /home/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /menu/i })).toBeInTheDocument();
+  });
+
+  it("shows Sign In link when logged out", () => {
+    render(<NavBar isLoggedIn={false} cartCount={0} />);
+    expect(screen.getByRole("link", { name: /sign in/i })).toBeInTheDocument();
+  });
+
+  it("does NOT show My Orders when logged out", () => {
+    render(<NavBar isLoggedIn={false} cartCount={0} />);
+    expect(screen.queryByRole("link", { name: /my orders/i })).not.toBeInTheDocument();
+  });
+});
+
+describe("NavBar — authenticated", () => {
+  it("shows My Orders, Profile, and Cart when logged in", () => {
+    render(<NavBar isLoggedIn={true} cartCount={3} />);
+    expect(screen.getByRole("link", { name: /my orders/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /profile/i })).toBeInTheDocument();
+  });
+
+  it("does NOT show Sign In when logged in", () => {
+    render(<NavBar isLoggedIn={true} cartCount={0} />);
+    expect(screen.queryByRole("link", { name: /sign in/i })).not.toBeInTheDocument();
+  });
+
+  it("displays the cart item count in the cart link", () => {
+    render(<NavBar isLoggedIn={true} cartCount={5} />);
+    expect(screen.getByRole("link", { name: /cart \(5 items\)/i })).toBeInTheDocument();
+  });
+
+  it("shows Cart (0) when cart is empty", () => {
+    render(<NavBar isLoggedIn={true} cartCount={0} />);
+    expect(screen.getByRole("link", { name: /cart \(0 items\)/i })).toBeInTheDocument();
+  });
+});
+
+describe("NavBar — link hrefs", () => {
+  it("Home link points to /", () => {
+    render(<NavBar isLoggedIn={false} cartCount={0} />);
+    expect(screen.getByRole("link", { name: /home/i })).toHaveAttribute("href", "/");
+  });
+
+  it("Menu link points to /menu", () => {
+    render(<NavBar isLoggedIn={false} cartCount={0} />);
+    expect(screen.getByRole("link", { name: /menu/i })).toHaveAttribute("href", "/menu");
+  });
+
+  it("Sign In link points to /auth", () => {
+    render(<NavBar isLoggedIn={false} cartCount={0} />);
+    expect(screen.getByRole("link", { name: /sign in/i })).toHaveAttribute("href", "/auth");
+  });
+});
+
+describe("ProtectedRoute", () => {
+  it("renders children when user is logged in", () => {
+    render(
+      <ProtectedRoute isLoggedIn={true}>
+        <p>Protected content</p>
+      </ProtectedRoute>
+    );
+    expect(screen.getByText(/protected content/i)).toBeInTheDocument();
+  });
+
+  it("renders nothing (redirects) when user is not logged in", () => {
+    render(
+      <ProtectedRoute isLoggedIn={false}>
+        <p>Protected content</p>
+      </ProtectedRoute>
+    );
+    expect(screen.queryByText(/protected content/i)).not.toBeInTheDocument();
+  });
+});
